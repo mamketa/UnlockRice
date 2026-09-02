@@ -1,0 +1,50 @@
+name: Cingkrak
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  aircrack-job:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Install Aircrack-ng
+      run: |
+        sudo apt update
+        sudo apt install -y aircrack-ng
+
+    - name: Combine Wordlists and Run Aircrack
+      run: |
+        # Menggabungkan kedua wordlist menjadi satu untuk efisiensi
+        cat list1.txt list2.txt > combined_list.txt
+        
+        # Menjalankan aircrack-ng dan menyimpan output teks ke file hasil
+        # Parameter -l digunakan untuk menyimpan key yang ditemukan ke file teks
+        aircrack-ng -w combined_list.txt shutdown-01.cap -l hasil_crack.txt | tee log_output.txt
+
+    - name: Check Result and Upload Artifact
+      if: always() # Tetap berjalan untuk memeriksa apakah file hasil terbentuk
+      run: |
+        # Memeriksa apakah file hasil_crack.txt ada dan tidak kosong (artinya key ditemukan)
+        if [ -s hasil_crack.txt ]; then
+          echo "KEY_FOUND=true" >> $GITHUB_ENV
+          echo "Key berhasil ditemukan!"
+        else
+          echo "KEY_FOUND=false" >> $GITHUB_ENV
+          echo "Key tidak ditemukan dalam wordlist."
+        fi
+
+    - name: Upload Hasil Crack sebagai Artifact
+      if: env.KEY_FOUND == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: hasil-cracking-wifi
+        path: |
+          hasil_crack.txt
+          log_output.txt
+        retention-days: 5
