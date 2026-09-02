@@ -28,9 +28,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y aircrack-ng
 
-          echo "=== Tools Version ==="
-          aircrack-ng --version
-
       - name: List Available Files
         run: |
           echo "=== Available CAP Files ==="
