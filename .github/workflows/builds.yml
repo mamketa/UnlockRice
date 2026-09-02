@@ -1,169 +1,51 @@
 name: CingKrak
 
 on:
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      capture_file:
-        description: "Enter the .cap file name"
-        required: true
-        type: string
-
-      simpenans:
-        description: "Enter TXT files separated by commas (e.g. list1.txt,list2.txt,etc)"
-        required: true
-        type: string
 
 jobs:
-  process:
+  tools-job:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          ref: main
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-      - name: Install Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y aircrack-ng
+    - name: Install Tools
+      run: |
+        sudo apt update
+        sudo apt install -y aircrack-ng
 
-      - name: List Available Files
-        run: |
-          echo "=== Available CAP Files ==="
-          find . -type f -name "*.cap" -print | sort
+    - name: Combine Simpenans and Run Tools
+      run: |
+        # Menggabungkan kedua simpenan menjadi satu untuk efisiensi
+        cat list1.txt list2.txt > combined_list.txt
+        
+        # Menjalankan aircrack-ng dan menyimpan output teks ke file hasil
+        # Parameter -l digunakan untuk menyimpan key yang ditemukan ke file teks
+        aircrack-ng -w combined_list.txt shutdown-01.cap -l hasil_krak.txt | tee log_output.txt
 
-          echo ""
-          echo "=== Available TXT Files ==="
-          find . -type f -name "*.txt" -print | sort
+    - name: Check Result and Upload Artifact
+      if: always() # Tetap berjalan untuk memeriksa apakah file hasil terbentuk
+      run: |
+        # Memeriksa apakah file hasil_krak.txt ada dan tidak kosong (artinya key ditemukan)
+        if [ -s hasil_krak.txt ]; then
+          echo "KEY_FOUND=true" >> $GITHUB_ENV
+          echo "Key berhasil ditemukan!"
+        else
+          echo "KEY_FOUND=false" >> $GITHUB_ENV
+          echo "Key tidak ditemukan dalam simpenan."
+        fi
 
-      - name: Validate Capture File
-        env:
-          CAP_FILE: ${{ inputs.capture_file }}
-        run: |
-          CAP_FILE="$(echo "$CAP_FILE" | xargs)"
-
-          if [ -z "$CAP_FILE" ]; then
-            echo "ERROR: Capture file name is empty."
-            exit 1
-          fi
-
-          if [ ! -f "$CAP_FILE" ]; then
-            echo "ERROR: Capture file not found: $CAP_FILE"
-            exit 1
-          fi
-
-          case "$CAP_FILE" in
-            *.cap)
-              echo "OK: Capture file found: $CAP_FILE"
-              ;;
-            *)
-              echo "ERROR: Selected file is not a .cap file."
-              exit 1
-              ;;
-          esac
-
-      - name: Validate Simpenans
-        env:
-          SIMPENANS: ${{ inputs.simpenans }}
-        run: |
-          if [ -z "$SIMPENANS" ]; then
-            echo "ERROR: No simpenans were specified."
-            exit 1
-          fi
-
-          IFS=',' read -ra FILES <<< "$SIMPENANS"
-
-          VALID_COUNT=0
-
-          for file in "${FILES[@]}"; do
-            file="$(echo "$file" | xargs)"
-
-            if [ -z "$file" ]; then
-              continue
-            fi
-
-            if [ ! -f "$file" ]; then
-              echo "ERROR: TXT file not found: $file"
-              exit 1
-            fi
-
-            case "$file" in
-              *.txt)
-                echo "OK: $file"
-                VALID_COUNT=$((VALID_COUNT + 1))
-                ;;
-              *)
-                echo "ERROR: Not a TXT file: $file"
-                exit 1
-                ;;
-            esac
-          done
-
-          if [ "$VALID_COUNT" -eq 0 ]; then
-            echo "ERROR: No valid TXT files were selected."
-            exit 1
-          fi
-
-          echo ""
-          echo "Validated $VALID_COUNT simpenan(s)."
-
-      - name: Combine Selected TXT Files
-        env:
-          SIMPENANS: ${{ inputs.simpenans }}
-        run: |
-          rm -f combined_list.txt
-
-          IFS=',' read -ra FILES <<< "$SIMPENANS"
-
-          for file in "${FILES[@]}"; do
-            file="$(echo "$file" | xargs)"
-
-            if [ -z "$file" ]; then
-              continue
-            fi
-
-            echo "Adding: $file"
-            cat "$file" >> combined_list.txt
-          done
-
-          echo ""
-          echo "=== Combined File ==="
-
-          echo "Total lines:"
-          wc -l combined_list.txt
-
-          echo ""
-          echo "File size:"
-          ls -lh combined_list.txt
-
-      - name: Generate Run Summary
-        env:
-          CAP_FILE: ${{ inputs.capture_file }}
-          SIMPENANS: ${{ inputs.simpenans }}
-        run: |
-          {
-            echo "# CingKrak Run"
-            echo ""
-            echo "## Selected Capture"
-            echo "\`$CAP_FILE\`"
-            echo ""
-            echo "## Selected Simpenans"
-            echo "\`$SIMPENANS\`"
-            echo ""
-            echo "## Combined Simpenan"
-            echo ""
-            echo "- Lines: $(wc -l < combined_list.txt)"
-            echo "- Size: $(du -h combined_list.txt | cut -f1)"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload Prepared Files
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cingkrak-prepared-files
-          path: |
-            combined_list.txt
-            ${{ inputs.capture_file }}
-          retention-days: 5
-          if-no-files-found: warn
+    - name: Upload Hasil sebagai Artifact
+      if: env.KEY_FOUND == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: hasil-cracking-wifi
+        path: |
+          hasil_krak.txt
+          log_output.txt
+        retention-days: 5
+        
